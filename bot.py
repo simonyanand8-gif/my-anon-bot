@@ -6,7 +6,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # --- ԱՅՍՏԵՂ ՏԵՂԱԴՐԻՐ ՔՈ TOKEN-Ը ---
 # Օրինակ՝ API_TOKEN = '8696364106:AAGLxICg4P4yBvREeH-cb5TbyJZWBkq-yho'
-API_TOKEN = 'ՔՈ_TOKEN_Ը_ԱՅՍՏԵՂ'
+API_TOKEN = '8696364106:AAGLxICg4P4yBvREeH-cb5TbyJZWBkq-yho'
 
 # Լոգավորում (որ տեսնենք՝ ինչ է կատարվում Render-ի կոնսոլում)
 logging.basicConfig(level=logging.INFO)
