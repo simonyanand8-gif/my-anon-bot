@@ -1,117 +1,120 @@
 import logging
-import asyncio
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-# --- ԱՅՍՏԵՂ ՏԵՂԱԴՐԻՐ ՔՈ TOKEN-Ը ---
-# Օրինակ՝ API_TOKEN = '8696364106:AAGLxICg4P4yBvREeH-cb5TbyJZWBkq-yho'
-API_TOKEN = '8696364106:AAGLxICg4P4yBvREeH-cb5TbyJZWBkq-yho'
-
-# Լոգավորում (որ տեսնենք՝ ինչ է կատարվում Render-ի կոնսոլում)
+# Լոգերի կարգավորում
 logging.basicConfig(level=logging.INFO)
 
-# Բոտի և դիսպետչերի սկզբնավորում
+# --- ԿԱՐԵՎՈՐ: ԴԻՐ ՔՈ ՏՈԿԵՆԸ ԱՅՍՏԵՂ ---
+API_TOKEN = '8696364106:AAGLxICg4P4yBvREeH-cb5TbyJZWBkq-yho'
+
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-# Տվյալների պահպանում (այս պահին RAM-ում)
-queue = []        # Օգտատերեր, ովքեր սպասում են զույգի
-users_chat = {}   # Ով ում հետ է խոսում {user_id: partner_id}
+# Զրույցների պահպանման համար
+waiting_users = []  # Մարդիկ, ովքեր սպասում են զրուցակցի
+active_chats = {}   # Ակտիվ զրույցներ {user_id: partner_id}
 
-# Ստեղծում ենք կոճակները
-def get_keyboard():
-    buttons = [
-        [KeyboardButton(text="/search"), KeyboardButton(text="/stop")],
-        [KeyboardButton(text="Կիսվել կոնտակտով", request_contact=True)]
-    ]
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+# --- ԿՈՃԱԿՆԵՐ ---
+def get_main_menu():
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(KeyboardButton("🔍 Գտնել զրուցակից"))
+    return keyboard
 
-# /start հրահանգը
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
+def get_chat_menu():
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(KeyboardButton("👤 Կիսվել կոնտակտով"), KeyboardButton("❌ Ավարտել"))
+    return keyboard
+
+# --- ՀՐԱՄԱՆՆԵՐ ---
+
+@dp.message_handler(commands=['start'])
+async def send_welcome(message: types.Message):
     await message.answer(
-        "Բարի գալուստ անանուն չաթ։\n\n"
-        "🔍 /search - Գտնել զրուցակից\n"
-        "🛑 /stop - Ավարտել զրույցը",
-        reply_markup=get_keyboard()
+        "Ողջոյն! Սա անանուն չաթ բոտ է: \nՍեղմիր կոճակը՝ զրուցակից գտնելու համար:",
+        reply_markup=get_main_menu()
     )
 
-# Զրուցակից փնտրելու հրահանգը
-@dp.message(Command("search"))
-async def cmd_search(message: types.Message):
+@dp.message_handler(lambda message: message.text == "🔍 Գտնել զրուցակից" or message.text == "/search")
+async def search_partner(message: types.Message):
     user_id = message.from_user.id
     
-    if user_id in users_chat:
-        await message.answer("Դուք արդեն չաթի մեջ եք։")
+    if user_id in active_chats:
+        await message.answer("Դուք արդեն զրույցի մեջ եք:")
         return
 
-    if user_id in queue:
-        await message.answer("Դուք արդեն հերթում եք։ Սպասեք...")
+    if user_id in waiting_users:
+        await message.answer("Դուք արդեն փնտրում եք զրուցակից...")
         return
 
-    if queue:
-        partner_id = queue.pop(0)
-        users_chat[user_id] = partner_id
-        users_chat[partner_id] = user_id
+    if waiting_users:
+        partner_id = waiting_users.pop(0)
+        active_chats[user_id] = partner_id
+        active_chats[partner_id] = user_id
         
-        await bot.send_message(user_id, "Զրուցակիցը գտնվեց։ Կարող եք գրել...")
-        await bot.send_message(partner_id, "Զրուցակիցը գտնվեց։ Կարող եք գրել...")
+        await bot.send_message(user_id, "🎉 Զրուցակիցը գտնվեց! Կարող եք գրել:", reply_markup=get_chat_menu())
+        await bot.send_message(partner_id, "🎉 Զրուցակիցը գտնվեց! Կարող եք գրել:", reply_markup=get_chat_menu())
     else:
-        queue.append(user_id)
-        await message.answer("Փնտրում եմ զրուցակից... Խնդրում եմ սպասել։")
+        waiting_users.append(user_id)
+        await message.answer("⏳ Փնտրում եմ զրուցակից...", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add("❌ Չեղարկել"))
 
-# Զրույցը դադարեցնելու հրահանգը
-@dp.message(Command("stop"))
-async def cmd_stop(message: types.Message):
+@dp.message_handler(lambda message: message.text == "❌ Ավարտել" or message.text == "/stop")
+async def stop_chat(message: types.Message):
     user_id = message.from_user.id
-    partner_id = users_chat.get(user_id)
-
-    if partner_id:
-        del users_chat[user_id]
-        del users_chat[partner_id]
-        await bot.send_message(user_id, "Չաթն ավարտվեց։")
-        await bot.send_message(partner_id, "Զրուցակիցն ավարտեց չաթը։")
-    elif user_id in queue:
-        queue.remove(user_id)
-        await message.answer("Փնտրումը չեղարկվեց։")
+    
+    if user_id in active_chats:
+        partner_id = active_chats[user_id]
+        
+        del active_chats[user_id]
+        del active_chats[partner_id]
+        
+        await bot.send_message(user_id, "❌ Զրույցն ավարտվեց:", reply_markup=get_main_menu())
+        await bot.send_message(partner_id, "❌ Զրուցակիցը դուրս եկավ չաթից:", reply_markup=get_main_menu())
+    elif user_id in waiting_users:
+        waiting_users.remove(user_id)
+        await message.answer("Չեղարկվեց:", reply_markup=get_main_menu())
     else:
-        await message.answer("Դուք հիմա ոչ մեկի հետ չեք խոսում։")
+        await message.answer("Դուք զրույցի մեջ չեք:", reply_markup=get_main_menu())
 
-# Հաղորդագրությունների փոխանցման տրամաբանությունը
-@dp.message()
+@dp.message_handler(lambda message: message.text == "👤 Կիսվել կոնտակտով" or message.text == "/share")
+async def share_profile(message: types.Message):
+    user_id = message.from_user.id
+    if user_id in active_chats:
+        partner_id = active_chats[user_id]
+        user = message.from_user
+        
+        if user.username:
+            link = f"https://t.me/{user.username}"
+            text = f"🌟 Զրուցակիցը կիսվեց իր Telegram-ով. {link}"
+        else:
+            text = f"🌟 Զրուցակիցը կիսվեց իր պրոֆիլով. [Սեղմիր այստեղ](tg://user?id={user.id})"
+        
+        await bot.send_message(partner_id, text, parse_mode="Markdown")
+        await message.answer("✅ Քո հղումը ուղարկվեց զրուցակցին:")
+    else:
+        await message.answer("Այս ֆունկցիան աշխատում է միայն զրույցի ժամանակ:")
+
+# --- ՀԱՂՈՐԴԱԳՐՈՒԹՅՈՒՆՆԵՐԻ ՓՈԽԱՆՑՈՒՄ ---
+@dp.message_handler(content_types=['text', 'photo', 'video', 'voice', 'sticker'])
 async def forward_message(message: types.Message):
     user_id = message.from_user.id
-    partner_id = users_chat.get(user_id)
-
-    if not partner_id:
-        if message.text not in ["/search", "/start", "/stop"]:
-            await message.answer("Զրույց սկսելու համար սեղմեք /search")
-        return
-
-    try:
+    if user_id in active_chats:
+        partner_id = active_chats[user_id]
+        # Փոխանցում ենք հաղորդագրությունը
         if message.text:
             await bot.send_message(partner_id, message.text)
         elif message.photo:
-            await bot.send_photo(partner_id, message.photo[-1].file_id, caption=message.caption)
+            await bot.send_photo(partner_id, message.photo[-1].file_id)
         elif message.video:
-            await bot.send_video(partner_id, message.video.file_id, caption=message.caption)
+            await bot.send_video(partner_id, message.video.file_id)
         elif message.voice:
             await bot.send_voice(partner_id, message.voice.file_id)
-        elif message.contact:
-            await bot.send_contact(partner_id, phone_number=message.contact.phone_number, first_name=message.contact.first_name)
         elif message.sticker:
             await bot.send_sticker(partner_id, message.sticker.file_id)
-        elif message.animation:
-            await bot.send_animation(partner_id, message.animation.file_id)
-            
-    except Exception as e:
-        logging.error(f"Error: {e}")
-        await message.answer("Հաղորդագրությունը չհասավ զրուցակցին։")
+    else:
+        # Եթե մարդը պարզապես գրում է առանց չաթի
+        if message.text not in ["🔍 Գտնել զրուցակից", "❌ Ավարտել", "❌ Չեղարկել"]:
+            await message.answer("Զրուցակից գտնելու համար սեղմիր կոճակը 👇")
 
-# Բոտի գործարկում
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
