@@ -9,6 +9,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 logging.basicConfig(level=logging.INFO)
 
 API_TOKEN = '8696364106:AAG6UMdDpJ_r3m2j0JyTYf_dp4X6UMfIyw4'
+ADMIN_ID = 8375974477  # Այստեղ գրիր քո ID-ն (առանց չակերտների)
 
 storage = MemoryStorage()
 bot = Bot(token=API_TOKEN)
@@ -49,6 +50,28 @@ async def cmd_start(message: types.Message):
     else:
         await message.answer("Բարի գալուստ հետ! Պատրա՞ստ ես շփման:", reply_markup=get_main_menu())
 
+@dp.message_handler(commands=['stats'])
+async def cmd_stats(message: types.Message):
+    # Ստուգում ենք՝ արդյոք գրողը դու ես
+    if message.from_user.id == ADMIN_ID:
+        total = len(user_data)
+        males = list(user_data.values()).count('male')
+        females = list(user_data.values()).count('female')
+        in_chat = len(active_chats) // 2
+        waiting = len(waiting_users)
+        
+        stats_text = (
+            f"📊 **Բոտի վիճակագրությունը**\n\n"
+            f"👤 Օգտատերեր: {total}\n"
+            f"👦 Տղաներ: {males}\n"
+            f"👧 Աղջիկներ: {females}\n"
+            f"💬 Ակտիվ զրույցներ: {in_chat}\n"
+            f"⏳ Հերթի մեջ են: {waiting}"
+        )
+        await message.answer(stats_text, parse_mode="Markdown")
+    else:
+        # Եթե ուրիշ մարդ գրի, բոտը կպատասխանի սա
+        await message.answer("Ներողություն, այս հրամանը հասանելի չէ ձեզ:")
 @dp.message_handler(state=Registration.choosing_gender)
 async def process_gender(message: types.Message, state: FSMContext):
     if message.text in ["👦 Տղա", "👧 Աղջիկ"]:
