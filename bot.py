@@ -5,15 +5,15 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 # Լոգերի կարգավորում
 logging.basicConfig(level=logging.INFO)
 
-# --- ԿԱՐԵՎՈՐ: ԴԻՐ ՔՈ ՏՈԿԵՆԸ ԱՅՍՏԵՂ ---
+# Տոկեն
 API_TOKEN = '8696364106:AAGLxICg4P4yBvREeH-cb5TbyJZWBkq-yho'
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
 # Զրույցների պահպանման համար
-waiting_users = []  # Մարդիկ, ովքեր սպասում են զրուցակցի
-active_chats = {}   # Ակտիվ զրույցներ {user_id: partner_id}
+waiting_users = []
+active_chats = {}
 
 # --- ԿՈՃԱԿՆԵՐ ---
 def get_main_menu():
@@ -38,20 +38,16 @@ async def send_welcome(message: types.Message):
 @dp.message_handler(lambda message: message.text == "🔍 Գտնել զրուցակից" or message.text == "/search")
 async def search_partner(message: types.Message):
     user_id = message.from_user.id
-    
     if user_id in active_chats:
         await message.answer("Դուք արդեն զրույցի մեջ եք:")
         return
-
     if user_id in waiting_users:
         await message.answer("Դուք արդեն փնտրում եք զրուցակից...")
         return
-
     if waiting_users:
         partner_id = waiting_users.pop(0)
         active_chats[user_id] = partner_id
         active_chats[partner_id] = user_id
-        
         await bot.send_message(user_id, "🎉 Զրուցակիցը գտնվեց! Կարող եք գրել:", reply_markup=get_chat_menu())
         await bot.send_message(partner_id, "🎉 Զրուցակիցը գտնվեց! Կարող եք գրել:", reply_markup=get_chat_menu())
     else:
@@ -61,13 +57,10 @@ async def search_partner(message: types.Message):
 @dp.message_handler(lambda message: message.text == "❌ Ավարտել" or message.text == "/stop")
 async def stop_chat(message: types.Message):
     user_id = message.from_user.id
-    
     if user_id in active_chats:
         partner_id = active_chats[user_id]
-        
         del active_chats[user_id]
         del active_chats[partner_id]
-        
         await bot.send_message(user_id, "❌ Զրույցն ավարտվեց:", reply_markup=get_main_menu())
         await bot.send_message(partner_id, "❌ Զրուցակիցը դուրս եկավ չաթից:", reply_markup=get_main_menu())
     elif user_id in waiting_users:
@@ -82,25 +75,21 @@ async def share_profile(message: types.Message):
     if user_id in active_chats:
         partner_id = active_chats[user_id]
         user = message.from_user
-        
         if user.username:
             link = f"https://t.me/{user.username}"
             text = f"🌟 Զրուցակիցը կիսվեց իր Telegram-ով. {link}"
         else:
             text = f"🌟 Զրուցակիցը կիսվեց իր պրոֆիլով. [Սեղմիր այստեղ](tg://user?id={user.id})"
-        
         await bot.send_message(partner_id, text, parse_mode="Markdown")
         await message.answer("✅ Քո հղումը ուղարկվեց զրուցակցին:")
     else:
         await message.answer("Այս ֆունկցիան աշխատում է միայն զրույցի ժամանակ:")
 
-# --- ՀԱՂՈՐԴԱԳՐՈՒԹՅՈՒՆՆԵՐԻ ՓՈԽԱՆՑՈՒՄ ---
 @dp.message_handler(content_types=['text', 'photo', 'video', 'voice', 'sticker'])
 async def forward_message(message: types.Message):
     user_id = message.from_user.id
     if user_id in active_chats:
         partner_id = active_chats[user_id]
-        # Փոխանցում ենք հաղորդագրությունը
         if message.text:
             await bot.send_message(partner_id, message.text)
         elif message.photo:
@@ -112,7 +101,6 @@ async def forward_message(message: types.Message):
         elif message.sticker:
             await bot.send_sticker(partner_id, message.sticker.file_id)
     else:
-        # Եթե մարդը պարզապես գրում է առանց չաթի
         if message.text not in ["🔍 Գտնել զրուցակից", "❌ Ավարտել", "❌ Չեղարկել"]:
             await message.answer("Զրուցակից գտնելու համար սեղմիր կոճակը 👇")
 
