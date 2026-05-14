@@ -8,7 +8,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 # Լոգավորում
 logging.basicConfig(level=logging.INFO)
 
-API_TOKEN = '8696364106:AAG6UMdDpJ_r3m2j0JyTYf_dp4X6UMfIyw4'
+API_TOKEN = '8696364106:AAEOZSPu_8LEpRM956WpHl6RZHIkn1vraJ8'
 ADMIN_ID = 8375974477  # Այստեղ գրիր քո ID-ն (առանց չակերտների)
 
 storage = MemoryStorage()
@@ -154,5 +154,21 @@ async def relay_messages(message: types.Message):
         if message.text not in ["🔍 Գտնել զրուցակից", "❌ Չեղարկել"]:
             await message.answer("Զրույց սկսելու համար սեղմիր կոճակը 👇")
 
+import os
+from threading import Thread
+
+# Կեղծ սերվեր Render-ի համար
+def run_dummy_server():
+    from flask import Flask
+    app = Flask(__name__)
+    @app.route('/')
+    def index(): return "Bot is running!"
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
 if __name__ == '__main__':
+    # Միացնում ենք կեղծ սերվերը առանձին թելով
+    Thread(target=run_dummy_server).start()
+    
+    # Միացնում ենք բոտը
     executor.start_polling(dp, skip_updates=True)
