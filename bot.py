@@ -1,108 +1,132 @@
 import logging
 from aiogram import Bot, Dispatcher, executor, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-# Լոգերի կարգավորում
+# Լոգավորում
 logging.basicConfig(level=logging.INFO)
 
-# Տոկեն
 API_TOKEN = '8696364106:AAGLxICg4P4yBvREeH-cb5TbyJZWBkq-yho'
 
+storage = MemoryStorage()
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher(bot, storage=storage)
 
-# Զրույցների պահպանման համար
-waiting_users = []
-active_chats = {}
+# Տվյալների պահպանում
+user_data = {}  # {user_id: 'male'/'female'}
+waiting_users = []  # Ընդհանուր հերթ բոլորի համար
+active_chats = {}   # {user_id: partner_id}
+
+class Registration(StatesGroup):
+    choosing_gender = State()
 
 # --- ԿՈՃԱԿՆԵՐ ---
+def get_gender_kb():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.add(KeyboardButton("👦 Տղա"), KeyboardButton("👧 Աղջիկ"))
+    return kb
+
 def get_main_menu():
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton("🔍 Գտնել զրուցակից"))
-    return keyboard
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton("🔍 Գտնել զրուցակից"))
+    return kb
 
 def get_chat_menu():
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton("👤 Կիսվել կոնտակտով"), KeyboardButton("❌ Ավարտել"))
-    return keyboard
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton("👤 Կիսվել կոնտակտով"), KeyboardButton("❌ Ավարտել"))
+    return kb
 
 # --- ՀՐԱՄԱՆՆԵՐ ---
 
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    await message.answer(
-        "Ողջոյն! Սա անանուն չաթ բոտ է: \nՍեղմիր կոճակը՝ զրուցակից գտնելու համար:",
-        reply_markup=get_main_menu()
-    )
-
-@dp.message_handler(lambda message: message.text == "🔍 Գտնել զրուցակից" or message.text == "/search")
-async def search_partner(message: types.Message):
+@dp.message_handler(commands=['start'], state='*')
+async def cmd_start(message: types.Message):
     user_id = message.from_user.id
+    if user_id not in user_data:
+        await message.answer("Ողջոյն! Նախքան սկսելը, նշիր քո սեռը.", reply_markup=get_gender_kb())
+        await Registration.choosing_gender.set()
+    else:
+        await message.answer("Բարի գալուստ հետ! Պատրա՞ստ ես շփման:", reply_markup=get_main_menu())
+
+@dp.message_handler(state=Registration.choosing_gender)
+async def process_gender(message: types.Message, state: FSMContext):
+    if message.text in ["👦 Տղա", "👧 Աղջիկ"]:
+        gender = 'male' if "Տղա" in message.text else 'female'
+        user_data[message.from_user.id] = gender
+        await state.finish()
+        await message.answer(f"Գրանցվեց: Դուք նշեցիք {message.text}: ✨", reply_markup=get_main_menu())
+    else:
+        await message.answer("Խնդրում եմ ընտրել կոճակներից մեկը:")
+
+@dp.message_handler(lambda message: message.text in ["🔍 Գտնել զրուցակից", "/search"])
+async def start_search(message: types.Message):
+    user_id = message.from_user.id
+    
     if user_id in active_chats:
         await message.answer("Դուք արդեն զրույցի մեջ եք:")
         return
+
     if user_id in waiting_users:
-        await message.answer("Դուք արդեն փնտրում եք զրուցակից...")
+        await message.answer("⏳ Դուք արդեն փնտրում եք զրուցակից...")
         return
+
     if waiting_users:
+        # Միացնում ենք հերթի առաջին մարդուն՝ անկախ սեռից
         partner_id = waiting_users.pop(0)
         active_chats[user_id] = partner_id
         active_chats[partner_id] = user_id
-        await bot.send_message(user_id, "🎉 Զրուցակիցը գտնվեց! Կարող եք գրել:", reply_markup=get_chat_menu())
-        await bot.send_message(partner_id, "🎉 Զրուցակիցը գտնվեց! Կարող եք գրել:", reply_markup=get_chat_menu())
+        
+        await bot.send_message(user_id, "🎉 Զրուցակից գտնվեց! Կարող եք գրել:", reply_markup=get_chat_menu())
+        await bot.send_message(partner_id, "🎉 Զրուցակից գտնվեց! Կարող եք գրել:", reply_markup=get_chat_menu())
     else:
         waiting_users.append(user_id)
-        await message.answer("⏳ Փնտրում եմ զրուցակից...", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add("❌ Չեղարկել"))
+        await message.answer("⏳ Փնտրում եմ զրուցակից...", 
+                             reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add("❌ Չեղարկել"))
 
-@dp.message_handler(lambda message: message.text == "❌ Ավարտել" or message.text == "/stop")
-async def stop_chat(message: types.Message):
+@dp.message_handler(lambda message: message.text in ["❌ Ավարտել", "/stop", "❌ Չեղարկել"])
+async def stop_everything(message: types.Message):
     user_id = message.from_user.id
+    
+    # Եթե ակտիվ չաթում է
     if user_id in active_chats:
-        partner_id = active_chats[user_id]
-        del active_chats[user_id]
-        del active_chats[partner_id]
-        await bot.send_message(user_id, "❌ Զրույցն ավարտվեց:", reply_markup=get_main_menu())
-        await bot.send_message(partner_id, "❌ Զրուցակիցը դուրս եկավ չաթից:", reply_markup=get_main_menu())
+        partner_id = active_chats.pop(user_id)
+        active_chats.pop(partner_id, None)
+        await bot.send_message(user_id, "Զրույցն ավարտվեց:", reply_markup=get_main_menu())
+        await bot.send_message(partner_id, "Զրուցակիցը դուրս եկավ չաթից:", reply_markup=get_main_menu())
+    
+    # Եթե հերթի մեջ է
     elif user_id in waiting_users:
         waiting_users.remove(user_id)
-        await message.answer("Չեղարկվեց:", reply_markup=get_main_menu())
+        await message.answer("Փնտրումը չեղարկվեց:", reply_markup=get_main_menu())
     else:
-        await message.answer("Դուք զրույցի մեջ չեք:", reply_markup=get_main_menu())
+        await message.answer("Դուք ակտիվ զրույց կամ հարցում չունեք:", reply_markup=get_main_menu())
 
-@dp.message_handler(lambda message: message.text == "👤 Կիսվել կոնտակտով" or message.text == "/share")
-async def share_profile(message: types.Message):
+@dp.message_handler(lambda message: message.text == "👤 Կիսվել կոնտակտով")
+async def share_link(message: types.Message):
     user_id = message.from_user.id
     if user_id in active_chats:
         partner_id = active_chats[user_id]
         user = message.from_user
-        if user.username:
-            link = f"https://t.me/{user.username}"
-            text = f"🌟 Զրուցակիցը կիսվեց իր Telegram-ով. {link}"
-        else:
-            text = f"🌟 Զրուցակիցը կիսվեց իր պրոֆիլով. [Սեղմիր այստեղ](tg://user?id={user.id})"
-        await bot.send_message(partner_id, text, parse_mode="Markdown")
-        await message.answer("✅ Քո հղումը ուղարկվեց զրուցակցին:")
-    else:
-        await message.answer("Այս ֆունկցիան աշխատում է միայն զրույցի ժամանակ:")
+        link = f"https://t.me/{user.username}" if user.username else f"tg://user?id={user_id}"
+        
+        await bot.send_message(partner_id, f"🌟 Զրուցակիցը կիսվեց իր կոնտակտով. {link}")
+        await message.answer("✅ Քո հղումը ուղարկվեց:")
 
-@dp.message_handler(content_types=['text', 'photo', 'video', 'voice', 'sticker'])
-async def forward_message(message: types.Message):
+# Բոլոր տեսակի հաղորդագրությունների փոխանցում
+@dp.message_handler(content_types=types.ContentTypes.ANY)
+async def message_relay(message: types.Message):
     user_id = message.from_user.id
     if user_id in active_chats:
         partner_id = active_chats[user_id]
-        if message.text:
-            await bot.send_message(partner_id, message.text)
-        elif message.photo:
-            await bot.send_photo(partner_id, message.photo[-1].file_id)
-        elif message.video:
-            await bot.send_video(partner_id, message.video.file_id)
-        elif message.voice:
-            await bot.send_voice(partner_id, message.voice.file_id)
-        elif message.sticker:
-            await bot.send_sticker(partner_id, message.sticker.file_id)
+        try:
+            # Պատճենում ենք հաղորդագրությունը (տեքստ, նկար, ձայն և այլն)
+            await message.copy_to(partner_id)
+        except Exception:
+            await message.answer("⚠️ Չհաջողվեց ուղարկել հաղորդագրությունը:")
     else:
-        if message.text not in ["🔍 Գտնել զրուցակից", "❌ Ավարտել", "❌ Չեղարկել"]:
-            await message.answer("Զրուցակից գտնելու համար սեղմիր կոճակը 👇")
+        if message.text not in ["🔍 Գտնել զրուցակից", "❌ Չեղարկել"]:
+            await message.answer("Զրույց սկսելու համար սեղմիր կոճակը 👇")
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
