@@ -138,16 +138,19 @@ async def share_link(message: types.Message):
 
 # Բոլոր տեսակի հաղորդագրությունների փոխանցում
 @dp.message_handler(content_types=types.ContentTypes.ANY)
-async def message_relay(message: types.Message):
+async def relay_messages(message: types.Message):
     user_id = message.from_user.id
+    
     if user_id in active_chats:
         partner_id = active_chats[user_id]
         try:
-            # Պատճենում ենք հաղորդագրությունը (տեքստ, նկար, ձայն և այլն)
-            await message.copy_to(partner_id)
+            # Ավելացնում ենք reply_markup=get_chat_menu(), որպեսզի 
+            # ամեն նամակի հետ կոճակները հայտնվեն կամ թարմանան
+            await message.copy_to(partner_id, reply_markup=get_chat_menu())
         except Exception:
             await message.answer("⚠️ Չհաջողվեց ուղարկել հաղորդագրությունը:")
     else:
+        # Այստեղ քո հին ստուգումներն են (օրինակ՝ start search)
         if message.text not in ["🔍 Գտնել զրուցակից", "❌ Չեղարկել"]:
             await message.answer("Զրույց սկսելու համար սեղմիր կոճակը 👇")
 
