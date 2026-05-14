@@ -8,7 +8,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 # Լոգավորում
 logging.basicConfig(level=logging.INFO)
 
-API_TOKEN = '8696364106:AAGLxICg4P4yBvREeH-cb5TbyJZWBkq-yho'
+API_TOKEN = '8696364106:AAG6UMdDpJ_r3m2j0JyTYf_dp4X6UMfIyw4'
 
 storage = MemoryStorage()
 bot = Bot(token=API_TOKEN)
